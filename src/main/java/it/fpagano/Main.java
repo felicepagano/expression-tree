@@ -12,7 +12,7 @@ public class Main {
 		
 		Map<String, Expression> m = Map.of(
 				"x", new Expression(new Sum(new Operand(1d), new Symbol("y"))), // x = 3
-				"y", new Expression(new Abs(new Difference(new Operand(1d), new Symbol("x")))) // y = 2
+				"y", new Expression(new Abs(new Difference(new Operand(1d), new Operand(3d)))) // y = 2
 				);
 		
 		var expressionMap = new ExpressionMap(m);
