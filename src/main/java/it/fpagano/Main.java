@@ -2,6 +2,9 @@ package it.fpagano;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BinaryOperator;
+import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 public class Main {
 	public static void main(String[] args) {
@@ -18,13 +21,13 @@ public class Main {
 						new Sum(new Symbol("x"), new Symbol("y"), new Operand(1))));
 
 		Expression e = new Expression(root);
-		Integer result = e.calc(map);
+		Number result = e.calc(map);
 		System.out.println(result);
 	}
 }
 
 record Expression(Node root) implements Node {
-	public Integer calc(ExpressionMap map) {
+	public Number calc(ExpressionMap map) {
 		return switch (root) {
 			case Operand o -> o.val();
 			case Operator o -> o.reduce(map);
@@ -50,22 +53,53 @@ interface Node { }
 @FunctionalInterface
 interface Operator extends Node {
 	Integer reduce(ExpressionMap map);
+
+	default Number nAryReduce(Number seed, ExpressionMap map, BinaryOperator<Number> f, Node...nodes) {
+		Number n = seed;
+		for (Node node : nodes) {
+			n = f.apply(n, switch (node) {
+				case Operand o -> o.val();
+				case Operator o -> o.reduce(map);
+				case Symbol o -> o.substitute(map).calc(map);
+				default -> throw new IllegalStateException("Unexpected value: " + node);
+			});
+		}
+		return n;
+	}
+
+	default Number bAryReduce(Node left, Node right, ExpressionMap map, BinaryOperator<Number> f) {
+		Number a = switch (left) {
+			case Operand o -> o.val();
+			case Operator o -> o.reduce(map);
+			case Symbol o -> o.substitute(map).calc(map);
+			default -> throw new IllegalStateException("Unexpected value: " + left);
+		};
+
+		Number b = switch (right) {
+			case Operand o -> o.val();
+			case Operator o -> o.reduce(map);
+			case Symbol o -> o.substitute(map).calc(map);
+			default -> throw new IllegalStateException("Unexpected value: " + right);
+		};
+
+		return f.apply(a, b);
+	}
+
+	default Number unaryReduce(Node a, ExpressionMap map, UnaryOperator<Number> f) {
+		return f.apply(switch (a) {
+			case Operand o -> o.val() ;
+			case Operator o -> o.reduce(map);
+			case Symbol o -> o.substitute(map).calc(map);
+			default -> throw new IllegalStateException("Unexpected value: " + a);
+		});
+	}
 }
 
 record Sum(Node... nodes) implements Operator {
 
 	@Override
 	public Integer reduce(ExpressionMap map) {
-		int n = 0;
-		for (Node node : nodes) {
-			n += switch (node) {
-				case Operand o -> o.val();
-				case Operator o -> o.reduce(map);
-				case Symbol o -> o.substitute(map).calc(map);
-				default -> throw new IllegalStateException("Unexpected value: " + node);
-			};
-		}
-		return n;
+		return nAryReduce(0, map, Math::addExact, nodes);
 	}
 }
 
@@ -73,16 +107,7 @@ record Multiplication(Node... nodes) implements Operator {
 
 	@Override
 	public Integer reduce(ExpressionMap map) {
-		int n = 1;
-		for (Node node : nodes) {
-			n *= switch (node) {
-				case Operand o -> o.val();
-				case Operator o -> o.reduce(map);
-				case Symbol o -> o.substitute(map).calc(map);
-				default -> throw new IllegalStateException("Unexpected value: " + node);
-			};
-		}
-		return n;
+		return nAryReduce(1, map, Math::multiplyExact);
 	}
 
 }
@@ -91,54 +116,21 @@ record Difference(Node left, Node right) implements Operator {
 
 	@Override
 	public Integer reduce(ExpressionMap map) {
-		Integer a = switch (left) {
-			case Operand o -> o.val();
-			case Operator o -> o.reduce(map);
-			case Symbol o -> o.substitute(map).calc(map);
-			default -> throw new IllegalStateException("Unexpected value: " + left);
-		};
-
-		Integer b = switch (right) {
-			case Operand o -> o.val();
-			case Operator o -> o.reduce(map);
-			case Symbol o -> o.substitute(map).calc(map);
-			default -> throw new IllegalStateException("Unexpected value: " + right);
-		};
-
-		return a - b;
+		return bAryReduce(left, right, map, Math::subtractExact);
 	}
 }
 
 record Division(Node left, Node right) implements Operator {
 	@Override
 	public Integer reduce(ExpressionMap map) {
-		Integer a = switch (left) {
-			case Operand o -> o.val();
-			case Operator o -> o.reduce(map);
-			case Symbol o -> o.substitute(map).calc(map);
-			default -> throw new IllegalStateException("Unexpected value: " + left);
-		};
-		
-		Integer b = switch (right) {
-			case Operand o -> o.val();
-			case Operator o -> o.reduce(map);
-			case Symbol o -> o.substitute(map).calc(map);
-			default -> throw new IllegalStateException("Unexpected value: " + right);
-		};
-		
-		return a / b;
+		return bAryReduce(left, right, map, Math::);
 	}
 }
 
 record Abs(Node a) implements Operator {
 	@Override
 	public Integer reduce(ExpressionMap map) {
-		return Math.abs(switch (a) {
-			case Operand o -> o.val() ;
-			case Operator o -> o.reduce(map);
-			case Symbol o -> o.substitute(map).calc(map);
-			default -> throw new IllegalStateException("Unexpected value: " + a);
-		});
+		return unaryReduce(a, map, Math::abs);
 	}
 }
 
