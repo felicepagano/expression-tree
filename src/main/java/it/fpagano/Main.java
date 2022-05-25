@@ -35,12 +35,6 @@ record Expression(Node root) implements Node {
 			case Operator o -> o.reduce(map);
 			case Expression o -> o.calc(map);
 			case Symbol o -> o.substitute(map).calc(map);
-			/*
-			if we remove the default case we obtain a compilation error
-			'switch' expression does not cover all possible input values
-			this looks like a jdk bug, all the cases should be evaluated by the pattern matcher
-			 */
-			default -> throw new IllegalStateException("Unexpected value: " + root);
 		};
 	}
 
@@ -59,12 +53,7 @@ record Expression(Node root) implements Node {
 							Expression::mergeSet);
 			case Expression o -> o.getReferencedSymbols();
 			case Symbol o -> Set.of(o.symbol());
-			/*
-			if we remove the default case we obtain a compilation error
-			'switch' expression does not cover all possible input values
-			this looks like a jdk bug, all the cases should be evaluated by the pattern matcher
-			 */
-			default -> Set.of();
+			case Operand o -> Set.of();
 		};
 	}
 
@@ -84,82 +73,48 @@ record ExpressionMap(Map<String, Expression> map) {
 	}
 }
 
-interface Node { }
+sealed interface Node { }
 
-@FunctionalInterface
-interface Operator extends Node {
+sealed interface Operator extends Node {
 	Double reduce(ExpressionMap map);
+
+	default Double reduce (Node node, ExpressionMap map) {
+			return switch (node) {
+				case Operand o -> o.val();
+				case Operator o -> o.reduce(map);
+				case Symbol o -> o.substitute(map).calc(map);
+				case Expression o -> o.calc(map);
+			};
+	}
 }
 
-interface BnaryOperator extends Operator {
+sealed interface BnaryOperator extends Operator {
 
 	Node getLeft();
 	Node getRight();
 
 	default Double bAryReduce(Node left, Node right, ExpressionMap map, BinaryOperator<Double> f) {
-		Double a = switch (left) {
-			case Operand o -> o.val();
-			case Operator o -> o.reduce(map);
-			case Symbol o -> o.substitute(map).calc(map);
-			/*
-			if we remove the default case we obtain a compilation error
-			'switch' expression does not cover all possible input values
-			this looks like a jdk bug, all the cases should be evaluated by the pattern matcher
-			 */
-			default -> throw new IllegalStateException("Unexpected value: " + left);
-		};
-
-		Double b = switch (right) {
-			case Operand o -> o.val();
-			case Operator o -> o.reduce(map);
-			case Symbol o -> o.substitute(map).calc(map);
-			/*
-			if we remove the default case we obtain a compilation error
-			'switch' expression does not cover all possible input values
-			this looks like a jdk bug, all the cases should be evaluated by the pattern matcher
-			 */
-			default -> throw new IllegalStateException("Unexpected value: " + right);
-		};
-
+		Double a = reduce(left, map);
+		Double b = reduce(right, map);
 		return f.apply(a, b);
 	}
 }
 
-interface UOperator extends Operator {
+sealed interface UOperator extends Operator {
 
 	Node getNode();
 	default Double unaryReduce(Node a, ExpressionMap map, UnaryOperator<Double> f) {
-		return f.apply(switch (a) {
-			case Operand o -> o.val() ;
-			case Operator o -> o.reduce(map);
-			case Symbol o -> o.substitute(map).calc(map);
-			/*
-			if we remove the default case we obtain a compilation error
-			'switch' expression does not cover all possible input values
-			this looks like a jdk bug, all the cases should be evaluated by the pattern matcher
-			 */
-			default -> throw new IllegalStateException("Unexpected value: " + a);
-		});
+		return f.apply(reduce(a, map));
 	}
 }
-interface NaryOperator extends Operator {
+sealed interface NaryOperator extends Operator {
 
 	Node[] getNodes();
 	default Double nAryReduce(Double seed, ExpressionMap map, BinaryOperator<Double> f, Node...nodes) {
 		Double n = seed;
 
 		for (Node node : nodes) {
-			n = f.apply(n, switch (node) {
-				case Operand o -> o.val();
-				case Operator o -> o.reduce(map);
-				case Symbol o -> o.substitute(map).calc(map);
-				/*
-			if we remove the default case we obtain a compilation error
-			'switch' expression does not cover all possible input values
-			this looks like a jdk bug, all the cases should be evaluated by the pattern matcher
-			 */
-				default -> throw new IllegalStateException("Unexpected value: " + node);
-			});
+			n = f.apply(n, reduce(node, map));
 		}
 		return n;
 	}
